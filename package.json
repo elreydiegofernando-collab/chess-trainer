@@ -1,0 +1,22 @@
+{
+  "name": "chess-trainer",
+  "version": "1.0.0",
+  "description": "Offline desktop chess app for a beginner — play full games and copy them (PGN) for Claude to review.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [
+    "chess",
+    "electron",
+    "learning"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "chess.js": "1.4.0",
+    "stockfish": "18.0.8"
+  },
+  "devDependencies": {
+    "electron": "42.4.1"
+  }
+}

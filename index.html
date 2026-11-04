@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chess Trainer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand"><span class="logo" aria-hidden="true">&#9822;</span><span>Chess Trainer</span></div>
+        <nav class="tabs" role="tablist">
+          <button id="tab-play" class="tab on" role="tab">Play</button>
+          <button id="tab-learn" class="tab" role="tab">Learn <span id="learn-due" class="pill hidden"></span></button>
+        </nav>
+        <div class="tag">Play, then copy a game for Claude to review.</div>
+      </header>
+
+      <div id="play-view">
+        <main class="layout">
+          <section class="board-area">
+            <div class="board-row">
+              <div class="evalbar" id="evalbar" aria-hidden="true"><div class="eval-fill" id="eval-fill"></div></div>
+              <div class="board-wrap">
+                <div id="board" class="board" role="grid" aria-label="Chess board"></div>
+                <svg id="arrows" class="arrows" viewBox="0 0 8 8" preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div id="promotion" class="overlay hidden"></div>
+                <div id="coach" class="overlay hidden"></div>
+                <div id="gameover" class="overlay hidden"></div>
+              </div>
+            </div>
+            <div class="board-controls">
+              <button id="btn-new" class="icon-btn" title="New game" aria-label="New game">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>New</span>
+              </button>
+              <button id="btn-undo" class="icon-btn" title="Undo (Left arrow)" aria-label="Undo move">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a4 4 0 0 1 0 8h-1"/></svg>
+                <span>Undo</span>
+              </button>
+              <button id="btn-flip" class="icon-btn" title="Flip board" aria-label="Flip board">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"/><path d="m8 7 4-4 4 4"/><path d="m8 17 4 4 4-4"/></svg>
+                <span>Flip</span>
+              </button>
+              <button id="btn-hint" class="icon-btn" title="Show a hint" aria-label="Show a hint">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.6 4.6 0 0 1 8.91 14"/></svg>
+                <span>Hint</span>
+              </button>
+            </div>
+          </section>
+
+          <aside class="panel">
+            <div class="status-card">
+              <div id="status" class="status">White to move</div>
+              <div id="opening" class="opening"></div>
+              <div id="eval-line" class="eval-line"></div>
+              <div id="thinking" class="thinking hidden"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Computer is thinking…</div>
+              <div id="cct" class="cct hidden">Before you move — look for <b>Checks</b>, <b>Captures</b>, and <b>Threats</b>, for both sides.</div>
+              <div id="coach-tip" class="coach-tip hidden"></div>
+            </div>
+
+            <div class="setup">
+              <div class="field">
+                <label for="sel-mode">Opponent</label>
+                <select id="sel-mode">
+                  <option value="computer">Computer</option>
+                  <option value="passplay">Pass &amp; play</option>
+                </select>
+              </div>
+              <div class="field" id="field-side">
+                <label for="sel-side">You play</label>
+                <select id="sel-side">
+                  <option value="w">White</option>
+                  <option value="b">Black</option>
+                </select>
+              </div>
+              <div class="field" id="field-diff">
+                <label for="sel-diff">Difficulty</label>
+                <select id="sel-diff">
+                  <option value="0">Very easy</option>
+                  <option value="1" selected>Easy</option>
+                  <option value="2">Medium</option>
+                  <option value="3">Hard</option>
+                  <option value="4">Very hard</option>
+                </select>
+              </div>
+              <div class="field" id="field-practice">
+                <label for="sel-practice">Practice</label>
+                <select id="sel-practice">
+                  <option value="">Free game</option>
+                  <option value="kq">Mate: K+Q vs K</option>
+                  <option value="kr">Mate: K+R vs K</option>
+                  <option value="2r">Mate: two rooks vs K</option>
+                  <option value="kp">Endgame: K+P</option>
+                </select>
+              </div>
+              <div class="toggles">
+                <label class="chk"><input type="checkbox" id="chk-coach" /> Coach mode — warn on blunders &amp; opening tips</label>
+                <label class="chk"><input type="checkbox" id="chk-cct" /> Show Checks · Captures · Threats reminder</label>
+              </div>
+            </div>
+
+            <div class="material" id="material" aria-label="Captured material"></div>
+
+            <div class="movelist-wrap">
+              <table class="movelist">
+                <tbody id="moves"></tbody>
+              </table>
+              <div class="movelist-empty" id="moves-empty">No moves yet. White moves first.</div>
+            </div>
+
+            <div id="review" class="review hidden"></div>
+
+            <div class="export">
+              <button id="btn-analyze">Review my game (engine)</button>
+              <button id="btn-review" class="primary">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy game for Claude review
+              </button>
+              <div class="export-row">
+                <button id="btn-pgn">Copy PGN</button>
+                <button id="btn-fen">Copy FEN</button>
+              </div>
+              <div class="hint-line" id="copyhint" role="status" aria-live="polite"></div>
+            </div>
+          </aside>
+        </main>
+      </div>
+
+      <div id="learn-view" class="hidden"></div>
+    </div>
+
+    <script type="module" src="renderer/app.js"></script>
+    <script type="module" src="renderer/learn.js"></script>
+  </body>
+</html>

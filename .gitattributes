@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.wasm binary
+*.woff2 binary
+# Third-party files stay byte-for-byte as published upstream.
+**/vendor/** -text
