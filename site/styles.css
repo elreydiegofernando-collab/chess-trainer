@@ -133,8 +133,14 @@ body {
   pointer-events: none;
   z-index: 4;
 }
-.arrows line { stroke: rgba(109, 158, 235, 0.9); stroke-width: 0.17; stroke-linecap: round; }
-.arrows polygon { fill: rgba(109, 158, 235, 0.9); }
+/* Blue: the hint. Green: the better move. Red: how your move gets punished.
+   Grey: the next move while stepping through a line. */
+.arrows line { stroke: var(--arrow, rgba(109, 158, 235, 0.9)); stroke-width: 0.17; stroke-linecap: round; }
+.arrows polygon { fill: var(--arrow, rgba(109, 158, 235, 0.9)); }
+.arrows .good { --arrow: rgba(95, 194, 141, 0.92); }
+.arrows .bad { --arrow: rgba(229, 103, 95, 0.92); }
+.arrows .next { --arrow: rgba(160, 172, 194, 0.85); }
+.board.previewing { box-shadow: 0 0 0 3px rgba(109, 158, 235, 0.6), 0 18px 50px rgba(0, 0, 0, 0.5); }
 
 .sq { position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .sq.light { background: var(--light); }
@@ -237,9 +243,20 @@ select {
 .rq.blunder { color: var(--bad); }
 .rq.mistake { color: var(--warn); }
 .rq.inacc { color: #c9b25e; }
-.review-list { margin: 2px 0 0; padding-left: 2px; list-style: none; display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; }
-.review-list li { line-height: 1.4; }
-.review-list b { color: var(--good); }
+.review-list { margin: 2px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.review-list li { line-height: 1.45; }
+.rv-item details { border-top: 1px solid var(--line); padding-top: 4px; }
+.rv-item:first-child details { border-top: 0; padding-top: 0; }
+.rv-item summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 6px 0 6px 18px; position: relative; min-height: 36px; }
+.rv-item summary::-webkit-details-marker { display: none; }
+.rv-item summary::before { content: "›"; position: absolute; left: 3px; top: 5px; color: var(--muted); font-weight: 800; transition: transform 0.16s ease; }
+.rv-item details[open] > summary::before { transform: rotate(90deg); }
+.rv-item summary .rq { font-weight: 800; white-space: nowrap; }
+.rv-head { color: var(--text); }
+.rv-body { padding: 0 0 8px 18px; }
+.rv-body p { margin: 0 0 5px; }
+.rv-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.rv-actions button { min-height: 38px; padding: 7px 12px; font-size: 13.5px; }
 .review-empty { color: var(--good); font-size: 13.5px; }
 .review-tip { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 
@@ -294,7 +311,6 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .promo-row { gap: 2.5cqw; }
   .promo-btn { width: 17cqw; height: 17cqw; min-height: 0; font-size: 11.5cqw; }
   .go-card button { margin: 5px 3px 0; padding: 9px 11px; font-size: 13.5px; }
-  .coach-card { padding: 14px; max-width: 94%; }
 }
 
 /* ---- tabs ---- */
@@ -347,7 +363,7 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .learn-body h3 { font-size: 13px; margin: 16px 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.4px; }
 .learn-body ul, .learn-body ol { margin: 0 0 8px; padding-left: 20px; line-height: 1.6; }
 .learn-body li { margin: 3px 0; }
-#mark { margin-top: 14px; }
+.lesson-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 
 /* Scoped to the Learn view: the game review also uses a "blunder" class for its counts and marks. */
 #learn-view .blunder { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
@@ -378,14 +394,116 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .opening { font-size: 13px; color: var(--accent); margin-top: 3px; min-height: 16px; }
 .cct { margin-top: 8px; font-size: 12.5px; color: var(--muted); background: var(--panel-2); border-radius: 8px; padding: 7px 10px; line-height: 1.45; }
 .cct b { color: var(--text); }
-.coach-tip { margin-top: 8px; font-size: 12.5px; color: var(--warn); line-height: 1.45; }
 .toggles { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
 .chk { display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: 14px; color: var(--muted); cursor: pointer; }
 .chk input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--accent); cursor: pointer; }
-.coach-card { background: #2a2333; border: 1px solid #5b4a2e; padding: 16px 18px; border-radius: 16px; box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55); text-align: center; max-width: 86%; }
-.coach-title { font-weight: 700; font-size: 16px; color: var(--warn); margin-bottom: 6px; }
-.coach-sub { font-size: 13.5px; color: var(--text); line-height: 1.5; margin-bottom: 12px; }
-.coach-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+/* ---- the coach panel and the tip card, right under the board ---- */
+.why, .tipcard { margin-top: 10px; }
+.why-card {
+  --grade: var(--accent);
+  background: linear-gradient(180deg, var(--panel), #161d2a);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--grade);
+  border-radius: 12px;
+  padding: 9px 12px 10px;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+.g-best { --grade: var(--good); }
+.g-good { --grade: #8cc9a0; }
+.g-inaccuracy { --grade: #d4bd66; }
+.g-mistake { --grade: var(--warn); }
+.g-blunder { --grade: var(--bad); }
+.g-hint { --grade: var(--accent); }
+.why-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 2px 0;
+  min-height: 34px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+  font-size: 15px;
+}
+.why-head:active { background: transparent; }
+@media (hover: hover) {
+  .why-head:hover { background: transparent; }
+}
+.why-head.static { cursor: default; }
+.grade {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--grade);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.why-title { flex: 1 1 auto; min-width: 0; font-weight: 650; }
+.why-title b { font-weight: 800; margin-right: 3px; }
+.chev { width: 18px; height: 18px; flex: 0 0 auto; color: var(--muted); transition: transform 0.16s ease; }
+.why-card.folded .chev { transform: rotate(-90deg); }
+.why-card.folded .why-body { display: none; }
+.why-body { margin-top: 4px; }
+.why-body p { margin: 0 0 6px; }
+.why-lead { font-weight: 650; }
+.better-move { font-weight: 800; color: var(--good); margin-right: 2px; }
+.why-lesson { display: flex; flex-direction: column; align-items: flex-start; gap: 0; margin-top: 2px; }
+.why-cat { font-size: 12.5px; color: var(--muted); }
+.why-note { color: var(--muted); font-size: 13.5px; }
+.linkish {
+  min-height: 34px;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  justify-content: flex-start;
+  text-align: left;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 650;
+}
+.linkish:active { background: transparent; }
+@media (hover: hover) {
+  .linkish:hover { background: transparent; text-decoration: underline; }
+}
+.why-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.why-card.nudge .why-actions { margin: 6px 0 8px; }
+.why-actions button { flex: 1 1 auto; min-height: 40px; padding: 8px 12px; }
+.why-card.loading { display: flex; align-items: center; gap: 10px; min-height: 52px; color: var(--accent); }
+.dots { display: inline-flex; gap: 4px; }
+.dots .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1s infinite; }
+.dots .dot:nth-child(2) { animation-delay: 0.2s; }
+.dots .dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* "Show me": step through a line */
+.why-card.stepper { border-left-color: var(--accent); }
+.step-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.step-tabs button { flex: 1 1 0; min-height: 38px; padding: 6px 8px; font-size: 14px; color: var(--muted); }
+.step-tabs button.on { color: var(--text); border-color: var(--accent-strong); font-weight: 700; }
+.step-text { margin: 0 0 8px; min-height: 42px; }
+.step-ctl { display: flex; align-items: center; gap: 8px; }
+.step-ctl button { min-width: 50px; min-height: 42px; padding: 8px 10px; }
+.step-ctl .primary { margin-left: auto; padding: 8px 18px; }
+.step-count { min-width: 52px; text-align: center; color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+
+/* tip card */
+.tip-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 6px 6px 2px 12px; font-size: 14px; line-height: 1.45; }
+.tip-card.repeat { border-color: rgba(224, 169, 85, 0.55); }
+.tip-top { display: flex; align-items: center; gap: 8px; }
+.tip-label { flex: 1 1 auto; font-size: 11.5px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; color: var(--accent); }
+.tip-card.repeat .tip-label { color: var(--warn); text-transform: none; letter-spacing: 0; font-size: 13px; }
+.tip-x { min-width: 36px; min-height: 36px; padding: 0; background: transparent; border: 0; border-radius: 8px; color: var(--muted); font-size: 22px; line-height: 1; }
+.tip-text { margin: 0 6px 0 0; }
 
 /* ---- copy-by-hand sheet (when the browser blocks the clipboard) ---- */
 .sheet { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 10, 16, 0.72); }
@@ -418,6 +536,12 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .brand .logo { font-size: 21px; }
   .tabs { gap: 4px; }
   .tab { padding: 7px 10px; }
+  /* A smaller grade label leaves more of the line for the reason. */
+  .grade { font-size: 10.5px; padding: 2px 5px; letter-spacing: 0.1px; }
+  .why-card { padding: 8px 10px 9px; font-size: 14px; }
+  .why-head { font-size: 14.5px; gap: 6px; }
+  .why-actions { gap: 6px; }
+  .why-actions button { padding: 8px 8px; }
 }
 
 /* ---- medium screens: show the tagline ---- */
@@ -459,6 +583,9 @@ select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   .board-controls { gap: 10px; margin-top: 14px; margin-left: 26px; flex-wrap: wrap; }
   .board-controls button { flex: 0 0 auto; padding: 10px 14px; gap: 7px; }
+  /* Same width as the board, lined up past the eval bar. */
+  .why, .tipcard { margin-left: 26px; width: var(--board-max); }
+  .why-actions button { flex: 0 0 auto; }
 
   .panel { flex: 1 1 auto; width: auto; min-width: 300px; align-self: stretch; border-radius: 16px; padding: 18px; gap: 14px; }
   select { font-size: 14px; padding: 8px 28px 8px 10px; }

@@ -20,6 +20,7 @@ let view = 'roadmap'; // 'roadmap' | 'level' | 'lesson' | 'review' | 'reference'
 let activeLevel = null;
 let activeLesson = null;
 let session = null; // review session
+let fromPlay = false; // lesson opened from a link in the Play view
 
 // ---------- helpers ----------
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -267,16 +268,27 @@ function renderLesson() {
   const list = (arr) => (arr && arr.length ? '<ul>' + arr.map((x) => `<li>${esc(x)}</li>`).join('') + '</ul>' : '');
   rootEl.innerHTML = nav('roadmap') +
     `<div class="learn-body lesson">
-      <button class="back" data-back="level">← ${esc(lv.title)}</button>
+      ${fromPlay ? '<button class="back" data-back="game">← Back to the game</button>' : `<button class="back" data-back="level">← ${esc(lv.title)}</button>`}
       <h2 class="lv-h">${esc(ls.title)}</h2>
       <div class="lesson-content">${md(ls.content)}</div>
       ${ls.principles && ls.principles.length ? `<h3>Key principles</h3>${list(ls.principles)}` : ''}
       ${ls.blunders && ls.blunders.length ? `<h3>Blunders this prevents</h3>${list(ls.blunders)}` : ''}
       ${ls.drill ? `<h3>Drill</h3><p>${esc(ls.drill)}</p>` : ''}
-      <button id="mark" class="primary">${done ? 'Learned ✓ (review scheduled)' : 'Mark as learned'}</button>
+      <div class="lesson-actions">
+        <button id="mark" class="primary">${done ? 'Learned ✓ (review scheduled)' : 'Mark as learned'}</button>
+        ${fromPlay ? '<button id="back-to-game">Back to the game</button>' : ''}
+      </div>
     </div>`;
   wireNav();
-  rootEl.querySelector('[data-back]').addEventListener('click', () => { view = 'level'; renderLearn(); });
+  rootEl.querySelector('[data-back]').addEventListener('click', (e) => {
+    const toGame = e.currentTarget.dataset.back === 'game';
+    fromPlay = false;
+    if (toGame && window.showPlay) return window.showPlay();
+    view = 'level';
+    renderLearn();
+  });
+  const backToGame = rootEl.querySelector('#back-to-game');
+  if (backToGame) backToGame.addEventListener('click', () => { fromPlay = false; if (window.showPlay) window.showPlay(); });
   rootEl.querySelector('#mark').addEventListener('click', () => {
     update((st) => { st.learned[lessonKey(lv, ls)] = true; });
     ensureSrsItems();
@@ -297,7 +309,7 @@ function renderReference() {
     </div>`;
   });
   rootEl.innerHTML = nav('reference') +
-    `<div class="learn-body"><h2 class="lv-h">Every kind of blunder</h2><p class="ref-sub">The full taxonomy your training maps to — from hanging pieces to strategic errors.</p>${html || '<p>Reference is being prepared.</p>'}</div>`;
+    `<div class="learn-body"><h2 class="lv-h">Every kind of blunder</h2><p class="ref-sub">Every kind of mistake your training covers, from hanging pieces to long-term plans.</p>${html || '<p>Reference is being prepared.</p>'}</div>`;
   wireNav();
 }
 
@@ -452,8 +464,22 @@ function wireNav() {
 // ---------- public hook (used by the Learn tab) ----------
 window.learnView = {
   refresh() {
+    fromPlay = false;
     if (view === 'review' && session) { renderLearn(); }
     else { view = 'roadmap'; renderLearn(); }
+    updateBadge();
+  },
+  // Opens one lesson ("levelId/lessonId"), e.g. from a link in the coach's explanation.
+  openLesson(key) {
+    const [lvId, lsId] = String(key || '').split('/');
+    const lv = CURRICULUM.levels.find((l) => l.id === lvId);
+    const ls = lv && lv.lessons.find((x) => x.id === lsId);
+    if (!ls) return this.refresh();
+    activeLevel = lv;
+    activeLesson = ls;
+    view = 'lesson';
+    fromPlay = true;
+    renderLearn();
     updateBadge();
   },
 };

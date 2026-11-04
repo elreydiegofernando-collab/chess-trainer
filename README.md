@@ -27,21 +27,37 @@ but not for home-screen apps.
    - **Difficulty:** Very easy to Very hard. You can change it mid-game; it affects
      the engine's next move.
    - **Practice:** checkmate drills (K+Q, K+R, two rooks) and a K+P endgame.
-   - **Coach mode** warns you before a blunder and gives opening tips; the
-     **Checks · Captures · Threats** reminder shows before each of your moves.
+   - **Coach mode** grades each of your moves (Best, Good, Inaccuracy, Mistake,
+     Blunder) and says why in plain words, right under the board: which piece is
+     hanging, the fork or pin you walked into, the checkmate you missed, and so
+     on. It names the better move (green arrow), says why it is better, and links
+     the lesson that teaches the idea. Before a big mistake it offers **Take it
+     back**. The **Checks · Captures · Threats** reminder shows before each of
+     your moves.
+   - The coach only claims a reason when the engine's line shows it. When there
+     is no clear reason, it says so: "The engine prefers Nf3. It keeps more of an
+     edge (+0.8 instead of +0.1)."
 2. **Play.** Tap a piece to see its legal moves (dot = move, ring = capture), then
    tap the square. Pawns reaching the last rank show a promotion picker. The panel
    tracks the opening, the move list, captured material and the engine's evaluation.
 3. **Controls** under the board: **New**, **Undo** (or the Left-arrow key on a
-   keyboard), **Flip**, **Hint** (draws the engine's suggestion as an arrow).
-4. **Review my game (engine)** marks blunders, mistakes and inaccuracies, shows the
-   better move, and can save any of them as a puzzle for your daily review.
-5. **Review with Claude:** tap **Copy game for Claude review**, switch to your
+   keyboard), **Flip**, **Hint** (draws the engine's suggestion as an arrow, with
+   a **Why this move?** button).
+4. **Show me** steps through the engine's line on the board, one move at a time:
+   how your move gets punished, and how the better move plays out. **Done** goes
+   back to the real game.
+5. **Review my game (engine)** marks blunders, mistakes and inaccuracies, says why
+   for each one, shows the better move, and can save any of them as a puzzle for
+   your daily review.
+6. **Tip cards:** each game starts with one short tip from the lessons at your
+   Learn level. When the same kind of mistake keeps coming back in your games,
+   the card shows a tip and the lesson for it. Tap × to put it away.
+7. **Review with Claude:** tap **Copy game for Claude review**, switch to your
    Claude chat, and paste. Claude gets the full game (PGN), result and final
    position, with a prompt asking it to coach you. **Copy PGN** and **Copy FEN**
    are there for the raw records. If the browser blocks copying, the text appears
    on screen, selected, so you can copy it yourself.
-6. **Learn tab:** a 12-level roadmap (each level unlocks when the one before it is
+8. **Learn tab:** a 12-level roadmap (each level unlocks when the one before it is
    done), lessons, **Daily review** (spaced repetition of lesson ideas and puzzles),
    a reference of every kind of blunder, and a study plan.
 
@@ -54,6 +70,11 @@ but not for home-screen apps.
   cannot send the cross-origin isolation headers the multi-threaded build needs.
 - **chess.js 1.4.0** (`site/vendor/chess.js`) handles the rules, legal moves,
   check, mate and draws, and PGN/FEN.
+- **The coach** (`site/js/why.js`) reads the engine's lines (several lines before
+  your move, the best line after it; `site/js/uci.js` reads them) and finds the
+  reason with chess.js. It searches your position while you think, so an
+  explanation shows in about a second, even on a phone. `site/js/tips.js` picks
+  the tip cards and keeps your mistake history in this browser.
 - The pieces come from a small subset of **Noto Sans Symbols 2** so they look the
   same on every phone.
 - A service worker (`site/sw.js`) keeps a copy of everything for offline use.
@@ -73,6 +94,12 @@ npm start
 
 Then open http://localhost:8080/. `npm run check` checks that every site file
 exists and is in the offline list.
+
+`npm test` (after `npm install` once) runs the coach against the real engine on
+known positions (a fork, a pin, a skewer, a hanging piece, a back-rank mate, a
+missed mate in 1, an early queen, a missed free capture, a quiet move where only
+the honest "the engine prefers" line should show, and more). Each must give the
+expected reason.
 
 To update chess.js or Stockfish: change the version in `package.json`, run
 `npm install`, then `npm run vendor` to copy the new files into `site/vendor/`.

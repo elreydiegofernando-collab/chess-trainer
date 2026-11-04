@@ -1,8 +1,8 @@
 {
   "name": "chess-trainer",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
-  "description": "Phone-friendly chess trainer in the browser for a beginner: play full games against Stockfish, learn step by step, and copy games (PGN) for Claude to review.",
+  "description": "Phone-friendly chess trainer in the browser for a beginner: play full games against Stockfish with a coach that says why each move is good or bad, learn step by step, and copy games (PGN) for Claude to review.",
   "keywords": [
     "chess",
     "stockfish",
@@ -14,6 +14,7 @@
   "scripts": {
     "start": "node scripts/serve.mjs",
     "check": "node scripts/check.mjs",
+    "test": "node scripts/test-why.mjs",
     "vendor": "node scripts/vendor.mjs"
   },
   "engines": {

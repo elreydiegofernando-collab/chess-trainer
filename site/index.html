@@ -39,7 +39,6 @@
                 <div id="board" class="board" role="grid" aria-label="Chess board"></div>
                 <svg id="arrows" class="arrows" viewBox="0 0 8 8" preserveAspectRatio="none" aria-hidden="true"></svg>
                 <div id="promotion" class="overlay hidden"></div>
-                <div id="coach" class="overlay hidden"></div>
                 <div id="gameover" class="overlay hidden"></div>
               </div>
             </div>
@@ -61,6 +60,10 @@
                 <span>Hint</span>
               </button>
             </div>
+            <!-- The coach: why a move is good or bad, the hint's reason, and "Show me". -->
+            <section id="why" class="why hidden" aria-live="polite" aria-label="Coach"></section>
+            <!-- One tip card from the lessons: at the start of a game, or for a mistake that keeps coming back. -->
+            <div id="tipcard" class="tipcard hidden" aria-label="Tip"></div>
           </section>
 
           <aside class="panel">
@@ -69,8 +72,7 @@
               <div id="opening" class="opening"></div>
               <div id="eval-line" class="eval-line"></div>
               <div id="thinking" class="thinking hidden"><span class="dot"></span><span class="dot"></span><span class="dot"></span> <span id="thinking-text">Computer is thinking…</span></div>
-              <div id="cct" class="cct hidden">Before you move — look for <b>Checks</b>, <b>Captures</b>, and <b>Threats</b>, for both sides.</div>
-              <div id="coach-tip" class="coach-tip hidden"></div>
+              <div id="cct" class="cct hidden">Before you move, look for <b>Checks</b>, <b>Captures</b>, and <b>Threats</b>, for both sides.</div>
             </div>
 
             <div class="setup">
@@ -109,7 +111,7 @@
                 </select>
               </div>
               <div class="toggles">
-                <label class="chk"><input type="checkbox" id="chk-coach" /> Coach mode — warn on blunders &amp; opening tips</label>
+                <label class="chk"><input type="checkbox" id="chk-coach" /> Coach mode: grade each move and say why</label>
                 <label class="chk"><input type="checkbox" id="chk-cct" /> Show Checks · Captures · Threats reminder</label>
               </div>
             </div>

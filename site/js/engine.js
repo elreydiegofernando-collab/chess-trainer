@@ -2,10 +2,13 @@
 //
 // This replaces the desktop app's main-process engine (main.js + preload.js)
 // with the same API the UI already used: bestMove(fen, {skill, movetime}),
-// evaluate(fen, {movetime}) and newGame(). Single-threaded on purpose: GitHub
-// Pages cannot send the cross-origin isolation headers the threaded build needs.
+// evaluate(fen, {movetime}) and newGame(), plus analyze(fen, {movetime,
+// multipv}) for the coach's lines. Single-threaded on purpose: GitHub Pages
+// cannot send the cross-origin isolation headers the threaded build needs.
 //
 // The worker script finds its .wasm next to itself (same name, .wasm).
+import { collector } from './uci.js';
+
 const ENGINE_URL = new URL('../vendor/stockfish/stockfish-18-lite-single.js', import.meta.url);
 const LOAD_TIMEOUT = 120000; // first load downloads ~7 MB; allow for a slow connection
 const SEARCH_GRACE = 15000; // a search may run this much past its movetime before we give up
@@ -16,6 +19,7 @@ let worker = null;
 let loading = null; // Promise while starting or once started
 let ready = false;
 let currentSkill = null;
+let currentMultiPV = 1;
 const lineHandlers = new Set();
 const failHandlers = new Set();
 
@@ -33,6 +37,7 @@ function fail(err) {
   loading = null;
   ready = false;
   currentSkill = null;
+  currentMultiPV = 1;
   lineHandlers.clear();
   const waiting = [...failHandlers];
   failHandlers.clear();
@@ -103,10 +108,20 @@ function setSkill(skill) {
   }
 }
 
-// One search. Resolves { best, score } where score is { cp } or { mate },
-// from the perspective of the side to move in `fen`.
+// Number of lines Stockfish reports (1 for play, 2-3 for the coach).
+function setMultiPV(n) {
+  if (n !== currentMultiPV) {
+    send('setoption name MultiPV value ' + n);
+    currentMultiPV = n;
+  }
+}
+
+// One search. Resolves { best, score, lines } where score is { cp } or
+// { mate } for the best line and lines is [{ depth, score, pv }] best first,
+// all from the perspective of the side to move in `fen`.
 function search(fen, movetime) {
   return new Promise((resolve, reject) => {
+    const col = collector();
     let score = null;
     let timer = null;
     const done = () => {
@@ -116,12 +131,15 @@ function search(fen, movetime) {
     };
     const onLine = (l) => {
       if (l.indexOf('info ') === 0) {
+        col.add(l);
+        // Positions with no legal move report a score but no line.
         const m = l.match(/ score (cp|mate) (-?\d+)/);
-        if (m) score = m[1] === 'cp' ? { cp: parseInt(m[2], 10) } : { mate: parseInt(m[2], 10) };
+        if (m && !score) score = m[1] === 'cp' ? { cp: parseInt(m[2], 10) } : { mate: parseInt(m[2], 10) };
       } else if (l.indexOf('bestmove') === 0) {
         done();
         const best = l.split(/\s+/)[1] || null;
-        resolve({ best: best === '(none)' ? null : best, score });
+        const lines = col.lines();
+        resolve({ best: best === '(none)' ? null : best, score: lines.length ? lines[0].score : score, lines });
       }
     };
     const onFail = (err) => { done(); reject(err); };
@@ -147,16 +165,23 @@ export const engine = {
     const r = await enqueue(async () => {
       await load();
       setSkill(typeof skill === 'number' ? skill : 20);
+      setMultiPV(1);
       return search(fen, movetime);
     });
     return r.best || '(none)';
   },
-  // Returns { best: "e2e4"|null, score: { cp } | { mate } | null } at full strength.
+  // Returns { best: "e2e4"|null, score: { cp } | { mate } | null, lines } at full strength.
   evaluate(fen, opts) {
+    return engine.analyze(fen, { movetime: Number(opts && opts.movetime) || 300, multipv: 1 });
+  },
+  // Like evaluate, with `multipv` lines (best first) for the coach.
+  analyze(fen, opts) {
     const movetime = Number(opts && opts.movetime) || 300;
+    const multipv = Math.max(1, Math.min(5, Number(opts && opts.multipv) || 1));
     return enqueue(async () => {
       await load();
       setSkill(20); // analysis is always full strength
+      setMultiPV(multipv);
       return search(fen, movetime);
     });
   },
