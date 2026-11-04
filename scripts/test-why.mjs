@@ -5,7 +5,7 @@
 // repeat exactly. Run with `npm test` (needs `npm install` once).
 import { Chess } from '../site/vendor/chess.js';
 import { collector, parseInfo } from '../site/js/uci.js';
-import { explainMove, flip, TAG_INFO, GOOD_LESSON } from '../site/js/why.js';
+import { explainMove, flip, gradeMove, TAG_INFO, GOOD_LESSON } from '../site/js/why.js';
 import { CURRICULUM } from '../site/js/curriculum.js';
 import { startEngine } from './node-engine.mjs';
 
@@ -36,6 +36,9 @@ const CASES = [
   { name: 'Pawn race lost', fen: '8/8/2k5/3p3K/8/8/5P2/8 w - - 0 40', move: 'f3', tag: 'passerAllowed', depths: [14] },
   // The Hint button explains the engine's own move.
   { name: 'Hint: why this move (fork)', fen: 'r3k3/5ppp/8/1N6/8/8/5PPP/4K3 w - - 0 1', hint: true, tag: 'win-fork' },
+  // Good moves: a real win is named; a line that only looks like a win is not.
+  { name: 'Good move: takes a free queen', fen: 'r4rk1/ppp2ppp/8/3q4/8/2N5/PPP2PPP/R4RK1 w - - 0 1', move: 'Nxd5', tag: 'win-free', good: true },
+  { name: 'Good move: 1.e4 wins nothing', fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', move: 'e4', tag: 'centerPawn', good: true },
 ];
 
 const DEPTHS = [12, 14];
@@ -71,7 +74,29 @@ function checkWords(name, e) {
   if (!ok) fail('UCI line reader');
 }
 
-// ---- 2. Every reason links to a real lesson and blunder category ----
+// ---- 2. Grading rules (scores from the mover's side, no engine needed) ----
+{
+  const rules = [
+    [{ cp: 30 }, { cp: -280 }, false, 'blunder', 'loses 3 points'],
+    [{ cp: 0 }, { cp: -160 }, false, 'mistake', 'loses 1.6 points'],
+    [{ cp: 0 }, { cp: -95 }, false, 'inaccuracy', 'loses about a pawn'],
+    [{ cp: 40 }, { cp: -20 }, false, 'good', 'loses a little'],
+    [{ cp: 40 }, { cp: -500 }, true, 'best', "the engine's own move"],
+    [{ cp: 1300 }, { cp: 950 }, false, 'good', 'still far ahead in a won game'],
+    [{ mate: 1 }, { cp: 300 }, false, 'blunder', 'misses mate in 1'],
+    [{ mate: 2 }, { cp: 1500 }, false, 'inaccuracy', 'misses mate in 2 but still winning'],
+    [{ mate: 7 }, { cp: 1500 }, false, 'good', 'a long mate the quick search did not see again'],
+    [{ cp: 20 }, { mate: -2 }, false, 'blunder', 'allows mate'],
+  ];
+  let ok = true;
+  for (const [b, a, top, want, why] of rules) {
+    const got = gradeMove(b, a, top).grade;
+    if (got !== want) ok = fail(`grading: ${why}: expected ${want}, got ${got}`);
+  }
+  console.log(`${ok ? 'PASS' : 'FAIL'}  Grading rules (${rules.length} cases: 300/150/90 points, won games, mates)`);
+}
+
+// ---- 3. Every reason links to a real lesson and blunder category ----
 {
   const cats = new Set(CURRICULUM.blunders.categories.map((c) => c.name));
   const lessons = new Set();
@@ -87,7 +112,7 @@ function checkWords(name, e) {
   console.log(`${ok ? 'PASS' : 'FAIL'}  Every reason links to a lesson and a category (${Object.keys(TAG_INFO).length} reasons, ${Object.keys(GOOD_LESSON).length} good-move lessons)`);
 }
 
-// ---- 3. Known positions against the engine ----
+// ---- 4. Known positions against the engine ----
 const eng = await startEngine();
 let slowest = 0;
 for (const c of CASES) {
@@ -121,13 +146,14 @@ for (const c of CASES) {
     results.push(`d${depth} ${e.label}/${e.tag || 'none'}`);
     const name = `${c.name} (depth ${depth})`;
     if (e.tag !== c.tag) ok = fail(`${name}: expected reason "${c.tag}", got "${e.tag}" (${e.headline} ${e.why.join(' ')})`);
-    if (!c.hint && c.tag !== null && !['inaccuracy', 'mistake', 'blunder'].includes(e.grade)) ok = fail(`${name}: expected a flagged grade, got ${e.grade}`);
+    if (!c.hint && !c.good && c.tag !== null && !['inaccuracy', 'mistake', 'blunder'].includes(e.grade)) ok = fail(`${name}: expected a flagged grade, got ${e.grade}`);
+    if (c.good && !['best', 'good'].includes(e.grade)) ok = fail(`${name}: expected Best or Good, got ${e.grade}`);
     if (c.tag === null) {
       if (!/^The engine prefers \S+\.$/.test(e.headline)) ok = fail(`${name}: generic headline wrong: "${e.headline}"`);
       if (!/\([+-]?\d+\.\d instead of [+-]?\d+\.\d\)\.$/.test(e.why[0] || '')) ok = fail(`${name}: generic line has no score comparison: "${e.why[0]}"`);
     }
     if (c.says && !c.says.test(textOf(e).join(' '))) ok = fail(`${name}: text does not match ${c.says}`);
-    if (!c.hint && c.tag !== null && !(e.better && e.better.san)) ok = fail(`${name}: no better move given`);
+    if (!c.hint && !c.good && c.tag !== null && !(e.better && e.better.san)) ok = fail(`${name}: no better move given`);
     if (!checkWords(name, e)) ok = false;
   }
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name.padEnd(34)} ${results.join('  ')}`);
@@ -135,7 +161,7 @@ for (const c of CASES) {
 }
 eng.quit();
 
-// ---- 4. Fast enough for a phone's main thread ----
+// ---- 5. Fast enough for a phone's main thread ----
 {
   const ok = slowest < 60;
   console.log(`${ok ? 'PASS' : 'FAIL'}  Slowest explanation took ${slowest.toFixed(1)} ms (limit 60 ms)`);

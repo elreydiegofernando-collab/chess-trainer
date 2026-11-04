@@ -47,15 +47,17 @@ export function currentLevelIndex() {
 }
 
 // A lesson's key principles, as short sentences.
+// The app's text uses no em dashes, so a line with one is left out.
+const EM_DASH = new RegExp(String.fromCharCode(0x2014));
 function tipLines(lesson) {
   const out = [];
   for (const p of lesson.principles || []) {
     let t = String(p).trim();
-    if (!t || /—/.test(t) || t.length > 150) continue;
+    if (!t || EM_DASH.test(t) || t.length > 150) continue;
     if (!/[.!?]$/.test(t)) t += '.';
     out.push(t);
   }
-  if (!out.length && lesson.summary && !/—/.test(lesson.summary)) out.push(lesson.summary);
+  if (!out.length && lesson.summary && !EM_DASH.test(lesson.summary)) out.push(lesson.summary);
   return out;
 }
 

@@ -135,7 +135,11 @@ export function gradeMove(before, after, isTop) {
   let grade;
   if (bm != null && bm > 0 && !(am != null && am > 0)) {
     const a = am != null ? -MATE : after ? after.cp : 0;
-    grade = a > 999 ? 'inaccuracy' : a > 700 ? 'mistake' : 'blunder';
+    // A long mate that a quick search after the move simply did not find
+    // again is not a missed mate while the game stays clearly won. Short
+    // mates (3 moves or less) always count: those are the ones to learn.
+    if (bm > 3 && a >= 500) grade = 'good';
+    else grade = a > 999 ? 'inaccuracy' : a > 700 ? 'mistake' : 'blunder';
   } else if (am != null && am <= 0 && !(bm != null && bm <= 0)) {
     const b = before && bm == null ? before.cp : 0;
     grade = b < -999 ? 'inaccuracy' : b < -700 ? 'mistake' : 'blunder';
@@ -251,6 +255,30 @@ function hasQueens(pos) {
   return false;
 }
 const isEndgame = (pos) => !hasQueens(pos) && nonPawn(pos, 'w') <= 6 && nonPawn(pos, 'b') <= 6;
+// Material on the board from `me`'s side, in pawns.
+function materialOf(pos, me) {
+  let n = 0;
+  for (const s in pos) if (pos[s].type !== 'k') n += (pos[s].color === me ? 1 : -1) * VAL[pos[s].type];
+  return n;
+}
+// An engine line can stop in the middle of a trade and look like a win. A
+// material claim also needs the engine's score to agree, at least half of it
+// (scores are not exact piece values, and a piece won can cost one later).
+const half = (points) => Math.min(points, 3) * 0.5;
+// A gain: the score is above the material now.
+function scoreShowsGain(ctx, gain, score) {
+  if (!score) return false;
+  if (score.mate != null) return score.mate > 0;
+  return score.cp / 100 - materialOf(ctx.snapBefore, ctx.me) >= half(gain);
+}
+// A loss (or a missed win): the score drops along with the material gap
+// between the played line and the better one.
+function scoreShowsGap(ctx, gap) {
+  const { before, after } = ctx;
+  if (!before || !after) return false;
+  if (before.mate != null || after.mate != null) return true;
+  return (before.cp - after.cp) / 100 >= half(gap);
+}
 function pawnEnding(pos) {
   for (const s in pos) if (pos[s].type !== 'p' && pos[s].type !== 'k') return false;
   return true;
@@ -652,7 +680,10 @@ export function explainMove({ fen, move, pre, post, hint = false }) {
   const better = top && !isTop ? walk(fen, top.pv) : null;
   // In a won or lost game the grade is gentle, but a piece given away for
   // nothing (3+ points, shown by the engine's line) is still worth flagging.
-  if (!isFlagged(grade) && better && settled(played, me, 0) <= settled(better, me, 0) - 3) grade = 'inaccuracy';
+  if (!isFlagged(grade) && better && after) {
+    const gap = settled(better, me, 0) - settled(played, me, 0);
+    if (gap >= 3 && scoreShowsGap({ before, after }, gap)) grade = 'inaccuracy';
+  }
   const bestMv = better && better.moves[0] ? better.moves[0] : null;
   const bestSan = bestMv ? bestMv.san : null;
   const ctx = {
@@ -739,13 +770,33 @@ function badReason(ctx) {
   // better line does not. Races are long, so the whole line counts here.
   const runner = promotionIn(played, opp, 14);
   if (runner && better && !promotionIn(better, opp, 14) && settled(played, me, 0, 14) <= -3) {
-    return { tag: 'passerAllowed', headline: `This lets ${O}'s pawn through.`, why: [`${O}'s pawn on ${runner} is free to run.`, "In the engine's line, it becomes a queen."] };
+    const takes = bestMv && bestMv.captured === 'p' && bestMv.to === runner;
+    return {
+      tag: 'passerAllowed', headline: `This lets ${O}'s pawn through.`,
+      why: [`${O}'s pawn on ${runner} is free to run.`, "In the engine's line, it becomes a queen."],
+      betterShort: takes ? 'It takes that pawn before it can run.' : 'It stops that pawn from becoming a queen.',
+    };
   }
 
-  // Material: the engine's line wins something from you.
+  // Material: what the played line loses, and what the better line wins. The
+  // bigger of the two is the lesson, so a missed free knight is not hidden
+  // behind a lost pawn.
   const pm = settled(played, me, 0);
   const bm = better ? settled(better, me, 0) : pm;
-  if (pm <= -1 && pm < bm) {
+  // A passed pawn that queens is the most specific lesson, so it goes first.
+  const order = bm >= 1 && bm > -pm ? [passerPush, missedWin, materialLoss] : [passerPush, materialLoss, missedWin];
+  for (const step of order) {
+    const r = step(ctx, pm, bm);
+    if (r) return r;
+  }
+  return positional(ctx);
+}
+
+// The engine's line wins something from you.
+function materialLoss(ctx, pm, bm) {
+  const { opp, mv, played, me } = ctx;
+  const O = sideName(opp);
+  if (pm <= -1 && pm < bm && scoreShowsGap(ctx, bm - pm)) {
     const r1 = played.moves[1];
     if (mv.captured && r1 && r1.captured && r1.to === mv.to) {
       const simple = -pm === VAL[mv.piece] - VAL[mv.captured];
@@ -769,15 +820,24 @@ function badReason(ctx) {
       };
     }
   }
+  return null;
+}
 
-  // A passed pawn that the engine pushes all the way: that is the lesson,
-  // even though queening also "wins material".
+// A passed pawn that the engine pushes all the way: that is the lesson,
+// even though queening also "wins material".
+function passerPush(ctx) {
+  const { better, bestMv, snapBefore, me, mv, opp } = ctx;
   if (better && bestMv && bestMv.piece === 'p' && !bestMv.captured && isPassed(snapBefore, bestMv.from, me) && promotionIn(better, me, 14) && !(mv.piece === 'p' && isPassed(snapBefore, mv.from, me))) {
-    return { tag: 'passer', headline: 'This holds back your passed pawn.', why: [`Your pawn on ${bestMv.from} is passed: no ${O} pawn can stop it.`, 'The engine pushes it and makes a new queen.'] };
+    return { tag: 'passer', headline: 'This holds back your passed pawn.', why: [`Your pawn on ${bestMv.from} is passed: no ${sideName(opp)} pawn can stop it.`, 'The engine pushes it and makes a new queen.'] };
   }
+  return null;
+}
 
-  // Missed a chance to win material.
-  if (better && bm >= 1 && bm > pm) {
+// Missed a chance to win material.
+function missedWin(ctx, pm, bm) {
+  const { better, me, opp } = ctx;
+  const O = sideName(opp);
+  if (better && bm >= 1 && bm > pm && scoreShowsGap(ctx, bm - pm)) {
     const t = classifyWin(better, me, 0, 1);
     if (t) {
       const w = winWords(t, O);
@@ -785,17 +845,28 @@ function badReason(ctx) {
         fork: 'missedFork', pin: 'missedPin', skewer: 'missedSkewer', discovered: 'missedDiscovered',
         removeDefender: 'missedRemove', free: 'missedFree', exchange: 'missedExchange',
       }[w.tag];
+      // `betterShort` says what the better move does, in the same words.
       if (w.tag === 'free' && t.free) {
         return {
           tag: 'missedFree', headline: `You missed a free ${NAME[t.victim.type]}.`,
           why: [`Your ${NAME[t.by.type]} on ${t.by.sq} could take the ${NAME[t.victim.type]} on ${t.victim.sq}, and nothing can take back.`],
+          betterShort: w.short,
         };
       }
       const names = { missedFork: 'a fork', missedPin: 'a pin', missedSkewer: 'a skewer', missedDiscovered: 'a discovered attack', missedRemove: 'a chance to remove a defender', missedExchange: 'a winning trade', missedFree: 'a chance to win material' };
-      if (missed) return { tag: missed, headline: `You missed ${names[missed]}.`, why: [w.detail.replace(/^Your/, `With ${t.key.san}, your`)] };
-      return { tag: null, headline: 'You missed a chance to win material.', why: [`${t.key.san} wins ${points(t.gain)} in the engine's line.`] };
+      if (missed) return { tag: missed, headline: `You missed ${names[missed]}.`, why: [w.detail.replace(/^Your/, `With ${t.key.san}, your`)], betterShort: w.short };
+      return { tag: null, headline: 'You missed a chance to win material.', why: [`${t.key.san} wins ${points(t.gain)} in the engine's line.`], betterShort: w.short };
     }
   }
+  return null;
+}
+
+// Reasons that are not about material: castling, opening principles, king
+// safety and endgame ideas, each confirmed by the engine's choice. Last
+// comes the honest "the engine prefers X" line.
+function positional(ctx) {
+  const { me, opp, mv, before, after, played, better, bestMv, bestSan, afterCh, snapBefore, moveNo } = ctx;
+  const O = sideName(opp);
 
   // Giving up castling comes first: it is the clearest reason for a king or rook move.
   if (bestMv && !ctx.ch.inCheck() && moveNo <= 20 && !isCastle(mv)) {
@@ -898,7 +969,7 @@ function goodReason(ctx, w, m) {
   if (after && after.mate != null && after.mate > 0) {
     return { tag: 'forcesMate', headline: after.mate === 1 ? 'This sets up checkmate next move.' : `This forces checkmate in ${after.mate}.`, why: [] };
   }
-  const r = positive(ctx, w, m, true);
+  const r = positive(ctx, w, m, true, after);
   if (r) return r;
   if (grade === 'best') return { tag: null, generic: true, headline: "This is the engine's top choice.", why: [] };
   return {
@@ -909,7 +980,8 @@ function goodReason(ctx, w, m) {
 
 // A confirmed good thing a move does: a tactic, a save, castling, a principle.
 // `full` gives headline + detail (for the move itself); otherwise a short "It ..." line.
-function positive(ctx, w, m, full) {
+// `score` is the engine's score after the move m (from the mover's side).
+function positive(ctx, w, m, full, score) {
   const { me, opp, fen, snapBefore } = ctx;
   const O = sideName(opp);
   const gain = settled(w, me, 0);
@@ -919,7 +991,7 @@ function positive(ctx, w, m, full) {
       ? { tag: 'pushPasser', headline: 'This pushes your passed pawn.', why: [`No ${O} pawn can stop it, and in the engine's line it becomes a queen.`] }
       : { short: 'It pushes your passed pawn, and it goes on to become a queen.' };
   }
-  if (gain >= 1) {
+  if (gain >= 1 && scoreShowsGain(ctx, gain, score)) {
     const t = classifyWin(w, me, 0, 1);
     if (t) {
       const words = winWords(t, O);
@@ -990,6 +1062,7 @@ function betterWhy(ctx, bad) {
   if (!better || !bestMv) return null;
   if (bad && bad.generic) return null; // the headline already names it and gives the scores
   if (new Chess(better.fens[1]).isCheckmate()) return 'It is checkmate.';
+  if (bad && bad.betterShort) return bad.betterShort; // the reason already says what the better move does
   if (top && top.score && top.score.mate != null && top.score.mate > 0) return `It starts a forced checkmate in ${top.score.mate}.`;
   // Against a back-rank mate, a pawn move in front of the king makes an escape square.
   if (bad && (bad.tag === 'backRank' || bad.tag === 'allowMate' || bad.tag === 'mateThreat')) {
@@ -1000,7 +1073,7 @@ function betterWhy(ctx, bad) {
     if (!(after && after.mate != null && after.mate < 0)) return 'It keeps your king safe.';
     return "It stops the checkmate.";
   }
-  const r = positive(ctx, better, bestMv, false);
+  const r = positive(ctx, better, bestMv, false, top && top.score);
   const pm = settled(played, me, 0);
   const bm = settled(better, me, 0);
   const lostStuff = bad && ['hang', 'threat', 'trade', 'exchange', 'fork', 'pin', 'skewer', 'discovered', 'removeDefender', 'passerAllowed'].includes(bad.tag);

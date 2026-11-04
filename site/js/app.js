@@ -922,7 +922,8 @@ function renderReview() {
   };
   const cls = (g) => (g === 'blunder' ? 'blunder' : g === 'mistake' ? 'mistake' : 'inacc');
   let html = `<div class="review-head">Game review${mode === 'computer' ? ': your moves' : ''}</div>`;
-  html += `<div class="review-counts"><span class="rq blunder">${counts.blunder} blunders</span><span class="rq mistake">${counts.mistake} mistakes</span><span class="rq inacc">${counts.inaccuracy} inaccuracies</span></div>`;
+  const many = (n, one, more) => `${n} ${n === 1 ? one : more}`;
+  html += `<div class="review-counts"><span class="rq blunder">${many(counts.blunder, 'blunder', 'blunders')}</span><span class="rq mistake">${many(counts.mistake, 'mistake', 'mistakes')}</span><span class="rq inacc">${many(counts.inaccuracy, 'inaccuracy', 'inaccuracies')}</span></div>`;
   if (!items.length) {
     html += '<div class="review-empty">No serious mistakes. Well played!</div>';
   } else {
