@@ -1,0 +1,17 @@
+{
+  "name": "Chess Trainer",
+  "short_name": "Chess Trainer",
+  "description": "Play full chess games against Stockfish, learn step by step, and copy games for Claude to review.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1320",
+  "theme_color": "#161c2b",
+  "categories": ["games", "education"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

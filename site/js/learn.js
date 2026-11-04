@@ -7,7 +7,8 @@ import { newItem, grade, isDue } from './srs.js';
 import { STARTER_PUZZLES } from './puzzles.js';
 import { CURRICULUM } from './curriculum.js';
 
-const GLYPH = { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
+// U+FE0E keeps the pawn a text glyph: some phones otherwise draw it as an emoji.
+const GLYPH = { p: '♟︎', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
 ensure({ learned: {}, srs: {}, puzzles: [], stats: { reviews: 0, correct: 0 } });
@@ -176,11 +177,24 @@ function solutionSan(pz) {
 }
 
 // ---------- views ----------
+// On a phone the page scrolls, so opening a different screen (level, lesson,
+// next review card) starts at the top instead of wherever the last one was.
+let lastScreen = '';
+function scrollToTopOnNewScreen() {
+  const key = [view, activeLevel && activeLevel.id, activeLesson && activeLesson.id, session && session.index].join('|');
+  if (key !== lastScreen && lastScreen && !rootEl.classList.contains('hidden')) {
+    const top = rootEl.getBoundingClientRect().top + window.scrollY - 12;
+    if (window.scrollY > top) window.scrollTo(0, Math.max(0, top));
+  }
+  lastScreen = key;
+}
+
 function renderLearn() {
   if (!CURRICULUM || !CURRICULUM.levels || !CURRICULUM.levels.length) {
     rootEl.innerHTML = '<div class="learn-pad">The training curriculum is still being prepared. Reopen the app shortly.</div>';
     return;
   }
+  scrollToTopOnNewScreen();
   if (view === 'review') return renderReview();
   if (view === 'lesson') return renderLesson();
   if (view === 'level') return renderLevelView();

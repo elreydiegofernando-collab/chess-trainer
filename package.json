@@ -1,22 +1,26 @@
 {
   "name": "chess-trainer",
-  "version": "1.0.0",
-  "description": "Offline desktop chess app for a beginner — play full games and copy them (PGN) for Claude to review.",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron ."
-  },
+  "version": "2.0.0",
+  "private": true,
+  "description": "Phone-friendly chess trainer in the browser for a beginner: play full games against Stockfish, learn step by step, and copy games (PGN) for Claude to review.",
   "keywords": [
     "chess",
-    "electron",
-    "learning"
+    "stockfish",
+    "learning",
+    "pwa"
   ],
   "license": "ISC",
-  "dependencies": {
-    "chess.js": "1.4.0",
-    "stockfish": "18.0.8"
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "check": "node scripts/check.mjs",
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "devDependencies": {
-    "electron": "42.4.1"
+    "chess.js": "1.4.0",
+    "stockfish": "18.0.8"
   }
 }

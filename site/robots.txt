@@ -1,0 +1,6 @@
+# A personal app, not meant for search results.
+# Crawlers only read robots.txt at the domain root, so the
+# <meta name="robots" content="noindex, nofollow"> tag in index.html
+# is what actually keeps this page out of search engines.
+User-agent: *
+Disallow: /

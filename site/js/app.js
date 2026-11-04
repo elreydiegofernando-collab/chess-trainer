@@ -1,11 +1,13 @@
 // Chess Trainer — Play view logic.
-// Rules/PGN/FEN: chess.js (vendored, offline). Engine: Stockfish in the main
-// process via window.engine (preload.js). No network, no API keys.
+// Rules/PGN/FEN: chess.js (vendored). Engine: Stockfish in a Web Worker
+// (engine.js). Everything runs in the browser; no accounts, no API keys.
 import { Chess } from '../vendor/chess.js';
 import { update, ensure } from './store.js';
 import { matchOpening } from './openings.js';
+import { engine } from './engine.js';
 
-const GLYPH = { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
+// U+FE0E keeps the pawn a text glyph: some phones otherwise draw it as an emoji.
+const GLYPH = { p: '♟︎', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9 };
 const DIFFICULTY = [
@@ -48,7 +50,7 @@ let practiceLabel = '';
 const shownTips = new Set();
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const hasEngine = !!(window.engine && window.engine.bestMove);
+const hasEngine = engine.supported;
 
 const boardEl = document.getElementById('board');
 const arrowsEl = document.getElementById('arrows');
@@ -60,6 +62,8 @@ const cctEl = document.getElementById('cct');
 const coachTipEl = document.getElementById('coach-tip');
 const coachEl = document.getElementById('coach');
 const thinkingEl = document.getElementById('thinking');
+const thinkingTextEl = document.getElementById('thinking-text');
+const copySheetEl = document.getElementById('copy-sheet');
 const movesEl = document.getElementById('moves');
 const movesEmptyEl = document.getElementById('moves-empty');
 const materialEl = document.getElementById('material');
@@ -181,6 +185,7 @@ function renderStatus() {
   }
   statusEl.textContent = text;
   thinkingEl.classList.toggle('hidden', !thinking);
+  if (thinkingTextEl) thinkingTextEl.textContent = engine.isReady() ? 'Computer is thinking…' : 'Loading the engine…';
   const showCct = cctOn && !game.isGameOver() && (mode === 'passplay' || game.turn() === playerColor);
   if (cctEl) cctEl.classList.toggle('hidden', !showCct);
 }
@@ -273,9 +278,12 @@ function whiteScore(score, turn) {
   if (score.mate != null) return { mate: turn === 'w' ? score.mate : -score.mate };
   return { cp: turn === 'w' ? score.cp : -score.cp };
 }
+// The fill size goes through --eval so CSS can draw the bar vertically (wide
+// screens) or horizontally (phones).
+function setEvalFill(pct) { evalFillEl.style.setProperty('--eval', pct + '%'); }
 function setEvalBar(score, turn) {
   const w = whiteScore(score, turn);
-  if (!w) { evalFillEl.style.height = '50%'; evalLineEl.textContent = ''; return; }
+  if (!w) { setEvalFill(50); evalLineEl.textContent = ''; return; }
   let pct;
   let label;
   if (w.mate != null) {
@@ -287,21 +295,32 @@ function setEvalBar(score, turn) {
     const n = w.cp / 100;
     label = `Eval: ${n > 0 ? '+' : ''}${n.toFixed(1)}`;
   }
-  evalFillEl.style.height = pct + '%';
+  setEvalFill(pct);
   evalLineEl.textContent = label;
 }
 async function updateEval() {
   if (!hasEngine) return;
+  // New request id first: it also discards any evaluation still running for an earlier position.
+  const id = ++evalReqId;
   if (game.isGameOver()) {
-    if (game.isCheckmate()) setEvalBar({ mate: 0 }, game.turn() === 'w' ? 'b' : 'w');
-    else { evalFillEl.style.height = '50%'; evalLineEl.textContent = 'Eval: draw'; }
+    if (game.isCheckmate()) {
+      // The side to move is mated. (A "mate in 0" score is neither side's, so say it directly.)
+      const whiteWon = game.turn() === 'b';
+      setEvalFill(whiteWon ? 100 : 0);
+      evalLineEl.textContent = `Eval: checkmate (${whiteWon ? 'White' : 'Black'} wins)`;
+    } else { setEvalFill(50); evalLineEl.textContent = 'Eval: draw'; }
     return;
   }
-  const id = ++evalReqId;
   const fen = game.fen();
   const turn = game.turn();
+  if (!engine.isReady()) evalLineEl.textContent = 'Loading the engine…';
   let r;
-  try { r = await window.engine.evaluate(fen, { movetime: 220 }); } catch (_) { return; }
+  try {
+    r = await engine.evaluate(fen, { movetime: 220 });
+  } catch (_) {
+    if (id === evalReqId && !engine.isReady()) evalLineEl.textContent = 'Engine did not load. Check your connection, then reload.';
+    return;
+  }
   if (id !== evalReqId) return;
   setEvalBar(r.score, turn);
 }
@@ -335,7 +354,7 @@ async function hint() {
   flashHint('Thinking of a hint…');
   const id = ++engineReqId;
   let r;
-  try { r = await window.engine.evaluate(game.fen(), { movetime: 600 }); } catch (_) { return flashHint('Engine error.'); }
+  try { r = await engine.evaluate(game.fen(), { movetime: 600 }); } catch (_) { return flashHint('Engine error.'); }
   if (id !== engineReqId) return;
   if (!r || !r.best) return flashHint('No hint available.');
   const from = r.best.slice(0, 2);
@@ -409,8 +428,8 @@ async function afterHumanMove(preFen) {
     let pre;
     let post;
     try {
-      pre = await window.engine.evaluate(preFen, { movetime: 240 });
-      post = await window.engine.evaluate(game.fen(), { movetime: 240 });
+      pre = await engine.evaluate(preFen, { movetime: 240 });
+      post = await engine.evaluate(game.fen(), { movetime: 240 });
     } catch (_) { coaching = false; return maybeEngineMove(); }
     if (reqId !== engineReqId) { coaching = false; return; }
     coaching = false;
@@ -484,10 +503,13 @@ async function maybeEngineMove() {
   thinking = true;
   const reqId = ++engineReqId;
   renderStatus();
+  // On the very first move the engine may still be downloading; switch the
+  // indicator from "Loading the engine…" to "Computer is thinking…" once it is up.
+  if (!engine.isReady()) engine.ready().then(() => { if (reqId === engineReqId) renderStatus(); }, () => {});
   const d = DIFFICULTY[diffIndex];
   let uci;
   try {
-    uci = await window.engine.bestMove(game.fen(), { skill: d.skill, movetime: d.movetime });
+    uci = await engine.bestMove(game.fen(), { skill: d.skill, movetime: d.movetime });
   } catch (_) {
     if (reqId === engineReqId) { thinking = false; flashHint('Engine error.'); renderStatus(); }
     return;
@@ -546,7 +568,7 @@ async function analyzeGame() {
   for (let i = 0; i < fens.length; i++) {
     flashHint(`Reviewing… ${i}/${N}`);
     let r;
-    try { r = await window.engine.evaluate(fens[i], { movetime: 220 }); } catch (_) { analyzing = false; return flashHint('Review failed.'); }
+    try { r = await engine.evaluate(fens[i], { movetime: 220 }); } catch (_) { analyzing = false; return flashHint('Review failed.'); }
     if (reviewId !== engineReqId) { analyzing = false; return; }
     scores[i] = r.score;
     bests[i] = r.best;
@@ -636,7 +658,7 @@ async function applyFreshGame() {
   clearReview();
   orientation = mode === 'computer' && playerColor === 'b' ? 'black' : 'white';
   flashHint('');
-  if (hasEngine) { try { await window.engine.newGame(); } catch (_) {} }
+  if (hasEngine) { try { await engine.newGame(); } catch (_) {} }
   render();
   updateEval();
   if (mode === 'computer' && engineColor() === game.turn()) maybeEngineMove();
@@ -669,7 +691,7 @@ function loadPractice(v) {
   clearSelection();
   clearReview();
   updateSetupVisibility();
-  if (hasEngine) { try { window.engine.newGame(); } catch (_) {} }
+  if (hasEngine) engine.newGame().catch(() => {});
   flashHint(`Practice: ${p.label}. You play ${playerColor === 'w' ? 'White' : 'Black'} — execute the technique; the computer defends.`);
   render();
   updateEval();
@@ -715,15 +737,16 @@ function setPgnHeaders() {
   game.setHeader('Result', resultString());
 }
 
+const COPY_BLOCKED = 'The browser blocked copying, so the text is shown for you to copy.';
 async function copyPgn() {
   if (game.history().length === 0) return flashHint('No moves to copy yet.');
   setPgnHeaders();
   const ok = await copyText(game.pgn());
-  flashHint(ok ? 'PGN copied to clipboard.' : 'Copy failed — select and copy manually.');
+  flashHint(ok ? 'PGN copied to clipboard.' : COPY_BLOCKED);
 }
 async function copyFen() {
   const ok = await copyText(game.fen());
-  flashHint(ok ? 'FEN copied to clipboard.' : 'Copy failed.');
+  flashHint(ok ? 'FEN copied to clipboard.' : COPY_BLOCKED);
 }
 async function copyForReview() {
   if (game.history().length === 0) return flashHint('Play some moves first, then copy the game.');
@@ -746,29 +769,66 @@ async function copyForReview() {
     `Final position (FEN): ${game.fen()}`,
   ];
   const ok = await copyText(lines.join('\n'));
-  flashHint(ok ? 'Game copied — paste it to Claude in chat.' : 'Copy failed — select and copy manually.');
+  flashHint(ok ? 'Game copied — paste it to Claude in chat.' : COPY_BLOCKED);
 }
 
+// Clipboard: the async Clipboard API first (it needs HTTPS, which GitHub Pages
+// has), then the older execCommand route, and if both are blocked, a sheet that
+// shows the text already selected so it can be copied by hand.
 async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch (_) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
     try {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      ta.remove();
-      return ok;
-    } catch (_) {
-      return false;
-    }
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {}
   }
+  if (legacyCopy(text)) return true;
+  showCopySheet(text);
+  return false;
 }
+
+function legacyCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '0';
+  ta.style.left = '0';
+  ta.style.opacity = '0';
+  ta.style.fontSize = '16px'; // stops iPhone zooming in on focus
+  document.body.appendChild(ta);
+  let ok = false;
+  try {
+    ta.select();
+    ta.setSelectionRange(0, text.length); // iPhone ignores select()
+    ok = document.execCommand('copy');
+  } catch (_) {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+
+function showCopySheet(text) {
+  copySheetEl.innerHTML = `<div class="copy-card">
+    <div class="copy-title" id="copy-title">Copy this text</div>
+    <div class="copy-sub">Copying was blocked, so here it is. Select it all, copy it, then paste it to Claude.</div>
+    <textarea class="copy-text" readonly spellcheck="false" aria-label="Text to copy"></textarea>
+    <div class="copy-actions"><button id="copy-select">Select all</button><button id="copy-done" class="primary">Done</button></div>
+  </div>`;
+  const ta = copySheetEl.querySelector('textarea');
+  ta.value = text;
+  copySheetEl.classList.remove('hidden');
+  const selectAll = () => { ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); };
+  copySheetEl.querySelector('#copy-select').addEventListener('click', selectAll);
+  copySheetEl.querySelector('#copy-done').addEventListener('click', hideCopySheet);
+  selectAll();
+}
+function hideCopySheet() {
+  copySheetEl.classList.add('hidden');
+  copySheetEl.innerHTML = '';
+}
+copySheetEl.addEventListener('click', (e) => { if (e.target === copySheetEl) hideCopySheet(); });
 
 let hintTimer = null;
 function flashHint(msg) {
@@ -837,6 +897,9 @@ document.getElementById('btn-review').addEventListener('click', copyForReview);
 document.getElementById('btn-pgn').addEventListener('click', copyPgn);
 document.getElementById('btn-fen').addEventListener('click', copyFen);
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !copySheetEl.classList.contains('hidden')) { hideCopySheet(); return; }
+  // Leave arrow keys alone while a text box or dropdown has focus.
+  if (e.target && e.target.closest && e.target.closest('textarea, select, input:not([type=checkbox]):not([type=radio])')) return;
   if (e.key === 'ArrowLeft') undo();
 });
 
